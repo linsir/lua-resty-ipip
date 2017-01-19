@@ -28,7 +28,7 @@ local _M = {}
 
 local mt = { __index = _M }
 
-_M._VERSION = '0.0.2'
+_M._VERSION = '0.1.1'
 
 local function _uint32(a, b, c, d)
     if not a or not b or not c or not d then
