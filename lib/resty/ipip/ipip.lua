@@ -28,7 +28,7 @@ local _M = {}
 
 local mt = { __index = _M }
 
-_M._VERSION = '0.01'
+_M._VERSION = '0.0.2'
 
 local function _uint32(a, b, c, d)
     if not a or not b or not c or not d then
@@ -221,8 +221,8 @@ function _M.api_status(self, _token)
         ngx.log(ngx.ERR, "failed to request: " .. err .. url)
         return nil, err
     end
-
-    if (res.body == '' or res.body) then
+    ngx.log(ngx.INFO, "-------->", res.body, (res.body ~= ''))
+    if (res.body == '') then
         return nil, 'bad token.'
     end
 

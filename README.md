@@ -17,36 +17,101 @@ IP query based on [http://www.ipip.net](http://www.ipip.net/), the best IP datab
 ## Synopsis
 
 ````lua
-lua_package_path "/path/to/lua-resty-ipip/lib/?.lua;;";
+    lua_package_path "/usr/local/openresty/ipip-demo/?.lua;;";
+    lua_code_cache off;
+    resolver 223.5.5.5;
+    init_by_lua '
+        local ipip = require "resty.ipip.ipip"
+        cjson = require "cjson"
+        ipipc = ipip:new("9a8bc1a059db4a14b4feb0f38db38bbf4d5353ab1")
+    ';
+    server {
+        listen 8000;
+        charset utf-8;
+        # server_name ip.linsir.org;
+        default_type text/plain;
+        root /usr/local/openresty/nginx/html;
 
-init_by_lua '
-    local ipip = require "resty.ipip.ipip"
-    ipipc = ipip:new()
-';
+        location /ip {
+            content_by_lua '
+                local ipipc = ipipc
+                local cjson = cjson
+                local res, err = ipipc:query_file("202.103.026.255")
+                if not res then
+                    ngx.say(err)
+                    return
+                end
+                ngx.say(cjson.encode(res))
+            ';
+        }
 
-server {
+        location /free_api {
+            content_by_lua '
+                local ipipc = ipipc
+                local cjson = cjson
+                local res, err = ipipc:query_free_api("202.103.026.255")
+                if not res then
+                    ngx.say(err)
+                    return
+                end
+                ngx.say(cjson.encode(res))
+            ';
+        }
 
-    listen 8000;
+        location /api {
+            content_by_lua '
+                local ipipc = ipipc
+                local cjson = cjson
+                local res, err = ipipc:query_api("202.103.026.255")
+                if not res then
+                    ngx.say(err)
+                    return
+                end
+                ngx.say(cjson.encode(res))
+            ';
+        }
 
-    location /ip {
-        content_by_lua '
-            local ipipc = ipipc
-            local res, err = ipipc:query_file("202.103.026.255")
-            if not res then
-                ngx.say(err)
-                return
-            end
-            ngx.say(res)
-        ';
+        location /api_status {
+            content_by_lua '
+                local ipipc = ipipc
+                local cjson = cjson
+                local res, err = ipipc:api_status()
+                if not res then
+                    ngx.say(err)
+                    return
+                end
+                ngx.say(cjson.encode(res))
+            ';
+        }
+
+        error_log  logs/ip_error_log info;
     }
 
 }
 ````
 
-A typical output of the `/ip` location defined above is:
+- A typical output of the `/ip` location defined above is:
 
 ```
 {"country":"中国","city":"武汉","province":"湖北"}
+```
+
+- A typical output of the `/free_api` location defined above is:
+
+```
+{"place":"","country":"中国","city":"武汉","province":"湖北","carriers":"电信"}
+```
+
+- A typical output of the `/api` location defined above is:
+
+```
+{"carriers":"电信","longitude":"114.298572","city":"武汉","province":"湖北","china_area_code":"420100","place":"","country":"中国","nation_code":"CN","phone_code":"86","tz_name":"Asia\/Shanghai","continents_code":"AP","latitude":"30.584355","tz_utc":"UTC+8"}
+```
+
+- A typical output of the `/api_status` location defined above is:
+
+```
+{"ret":"ok","service":{"service_id":10,"expired":"2019-08-13"},"data":{"day":1,"hour":1,"limit":false}}
 ```
 
 # Methods
