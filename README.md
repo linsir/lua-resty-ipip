@@ -11,19 +11,24 @@ Ready for testing. Probably production ready in most cases, though not yet prove
 IP query based on [http://www.ipip.net](http://www.ipip.net/), the best IP database for China.
 
 ## Install
-
+    opm install pintsized/lua-resty-http
     opm get linsir/lua-resty-ipip # use root
 
 ## Synopsis
 
 ````lua
-    lua_package_path "/usr/local/openresty/ipip-demo/?.lua;;";
-    lua_code_cache off;
+    lua_package_path "/usr/local/openresty/demo/?.lua;;";
+    lua_code_cache on;
     resolver 223.5.5.5;
     init_by_lua '
         local ipip = require "resty.ipip.ipip"
         cjson = require "cjson"
-        ipipc = ipip:new("9a8bc1a059db4a14b4feb0f38db38bbf4d5353ab1")
+        local opts = {
+            path = "/path/to/17monipdb.datx",
+            token = "your token",
+            timeout  = "2000",
+        }
+        ipipc = ipip:new(opts)
     ';
     server {
         listen 8000;
@@ -76,6 +81,7 @@ IP query based on [http://www.ipip.net](http://www.ipip.net/), the best IP datab
                 local ipipc = ipipc
                 local cjson = cjson
                 local res, err = ipipc:api_status()
+                # local res, err = ipipc:api_status("your token")
                 if not res then
                     ngx.say(err)
                     return
@@ -84,7 +90,7 @@ IP query based on [http://www.ipip.net](http://www.ipip.net/), the best IP datab
             ';
         }
 
-        error_log  logs/ip_error_log info;
+        error_log  logs/ip_error.log info;
     }
 
 }
@@ -118,20 +124,22 @@ IP query based on [http://www.ipip.net](http://www.ipip.net/), the best IP datab
 
 ## new
 
-`syntax: ipip:new(token, data_path)`
+`syntax: ipip:new(opts)`
+
+```
+local opts = {
+    path = "/path/to/17monipdb.datx",
+    token = "your token",
+    timeout  = "2000",
+}
+ipipc = ipip:new(opts)
 
 ```
 
-ipipc = ipip:new()
 
-ipipc = ipip:new('9a8bc1a059db4a14b4feb0f38db38bbf4d5353ab1')
-
-ipipc = ipip:new('9a8bc1a059db4a14b4feb0f38db38bbf4d5353ab1', '/path/to/lua-resty-ipip/lib/resty/ipip/data/17monipdb.dat')
-```
-
-
+* `path`: Sets the 17monipdb.datx ([download free version](https://www.ipip.net/free_download/)) file path.
 * `token`: The token of ipip.net.
-* `data_path`: Sets the 17monipdb.dat ([download free version](http://s.qdcdn.com/17mon/17monipdb.zip)) file path.
+* `timeout`: The timeout for http request.
 
 
 ## query
@@ -141,6 +149,12 @@ ipipc = ipip:new('9a8bc1a059db4a14b4feb0f38db38bbf4d5353ab1', '/path/to/lua-rest
 data, err = ipipc:query_free_api(ip)
 data, err = ipipc:query_api(ip)
 data, err = ipipc:query_file(ip)
+
+```
+
+## api status
+
+```
 data, err = ipipc:api_status()
 data, err = ipipc:api_status("9a8bc1a059db4a14b4feb0f38db38bbf4d5353ab1")
 ```

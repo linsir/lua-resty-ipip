@@ -12,7 +12,7 @@ from fabric.api import *
 
 prefix = '/usr/local/openresty'
 M_PATH = 'lib/resty/ipip'
-APP_NAME = "ipip-demo"
+APP_NAME = "demo"
 PORT = "8000"
 
 import paramiko
@@ -26,6 +26,9 @@ env.hosts = [
 
 env.use_ssh_config = True
 
+def install():
+    run('sudo opm install pintsized/lua-resty-http')
+    
 def local_update():
     print(yellow("copy %s and configure..." %APP_NAME ))
 
@@ -38,7 +41,7 @@ def local_update():
     if os.path.exists("%s/nginx/conf/conf.d/%s.conf" %(prefix, APP_NAME)):
         local("sudo rm -rf %s/nginx/conf/conf.d/%s.conf" %(prefix, APP_NAME))
     local("sudo ln -s  %s/%s/%s.conf %s/nginx/conf/conf.d/%s.conf" %(prefix, APP_NAME, APP_NAME, prefix, APP_NAME))
-    restart()
+    reload()
     local('curl 127.0.0.1:%s/' %PORT)
 
 def remote_update():
@@ -52,12 +55,15 @@ def remote_update():
         if not os.path.exists("%s/nginx/conf/conf.d/%s.conf" %(prefix, APP_NAME)):
             run('sudo ln -s  %s/%s/%s.conf %s.conf' %(APP_NAME, APP_NAME, APP_NAME))
 
-    print(green("nginx restarting..."))
-    run('/etc/init.d/nginx restart')
+    reload()
+
+def reload():
+    print(green("nginx reload..."))
+    local('sudo openresty -t && sudo openresty -s reload')
 
 def restart():
     print(green("nginx restarting..."))
-    local('sudo systemctl restart nginx')
+    local('sudo systemctl restart openresty')
 
 def update():
     # local update

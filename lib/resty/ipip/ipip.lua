@@ -28,7 +28,14 @@ local _M = {}
 
 local mt = { __index = _M }
 
-_M._VERSION = '0.1.1'
+_M._VERSION = '0.1.2'
+local debug_log_level = "DEBUG"
+local debug_log_level = "INFO"
+
+local default_timeout = 600000
+-- local headers = {
+--     ["User-agent"] = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/49.0.2623.75 Safari/537.36"
+-- }
 
 local function _uint32(a, b, c, d)
     if not a or not b or not c or not d then
@@ -42,10 +49,17 @@ local function _uint32(a, b, c, d)
     return u
 end
 
-local function _split(s, p)
-    local rt = {}
-    string.gsub(s, '[^' .. p .. ']+', function(w) table.insert(rt, w) end)
-    return rt
+local function _split(input, delimiter)
+    input = tostring(input)
+    delimiter = tostring(delimiter)
+    if (delimiter=='') then return false end
+    local pos,arr = 0, {}
+    for st,sp in function() return string.find(input, delimiter, pos, true) end do
+        table.insert(arr, string.sub(input, pos, st - 1))
+        pos = sp + 1
+    end
+    table.insert(arr, string.sub(input, pos))
+    return arr
 end
 
 -- 返回数据模版
@@ -53,16 +67,18 @@ local data_template = {
     "country", -- // 国家
     "province", -- // 省会或直辖市（国内）
     "city", -- // 地区或城市 （国内）
-    "place", -- // 学校或单位 （国内）
-    "carriers", -- // 运营商字段（只有购买了带有运营商版本的数据库才会有）
-    "latitude", -- // 纬度     （每日版本提供）
-    "longitude", -- // 经度     （每日版本提供）
-    "tz_name", -- // 时区一, 可能不存在  （每日版本提供）
-    "tz_utc", -- // 时区二, 可能不存在  （每日版本提供）
-    "china_area_code", -- // 中国行政区划代码    （每日版本提供）
-    "phone_code", -- // 国际电话代码        （每日版本提供）
-    "nation_code", -- // 国家二位代码        （每日版本提供）
-    "continents_code" -- // 世界大洲代码        （每日版本提供）
+    "org", -- // 学校或单位 （国内）
+    "isp", -- // 运营商字段（只有购买了带有运营商版本的数据库才会有）
+    "lat", -- // 纬度     （每日版本提供）
+    "lng", -- // 经度     （每日版本提供）
+    "time_zone", -- // 时区一, 可能不存在  （每日版本提供）
+    "time_zone_2", -- // 时区二, 可能不存在  （每日版本提供）
+    "china_code", -- // 中国行政区划代码    （每日版本提供）
+    "phone_prefix", -- // 国际电话代码        （每日版本提供）
+    "iso_2", -- // 国家二位代码        （每日版本提供）
+    "continent", -- // 世界大洲代码        （每日版本提供）
+    "is_idc", -- // 三合一版本提供
+    "is_base_station" -- // 三合一版本提供
 }
 
 -- 用模版格式化数据
@@ -71,71 +87,97 @@ local function to_table(location)
     for k, v in ipairs(location) do
         r[data_template[k]] = v
     end
-
     return r
 end
 
 -- 初始化
-function _M.new(self, token, path)
-    local url = "http://freeapi.ipip.net/"
-    if token then
-        url = "http://ipapi.ipip.net/"
+function _M.new(self, opts)
+
+    local obj = {
+        api_url = "https://ipapi.ipip.net/"
+    }
+
+    obj.token = opts.token or nil
+    obj.timeout = opts.timeout or nil
+    if opts.path then
+        ngx.log(ngx[debug_log_level], "The data file path at: " .. opts.path)
+        local file = io.open(opts.path)
+        if file == nil then
+            ngx.log(ngx.ERR, "The data file path not initialized")
+            return nil, "io error."
+        end
+        local data = file:read("*all")
+        obj.data = data
+    else
+        ngx.log(ngx.ERR, "The data file path not exsits")
     end
-    if not path then
-        path = "/usr/local/openresty/site/lualib/resty/ipip/data/17monipdb.dat"
-    end
-    
-    return setmetatable({api_url = url, token = token, data_path = path}, mt)
+
+    return setmetatable(obj, mt)
 end
 
 
 -- 从文件获取 IP 信息
-function _M.query_file(self, ipstr)
-    if not self.data_path then
-        ngx.log(ngx.ERR, self.data_path)
-        return nil, "The data file path not initialized"
-    end
+function _M.query_file(self, ip)
 
-    local ip1, ip2, ip3, ip4 = match(ipstr, "(%d+).(%d+).(%d+).(%d+)")
-    local ip_uint32 = _uint32(ip1, ip2, ip3, ip4)
-    local file = io.open(self.data_path)
-    if file == nil then
-        return nil, "io error."
-    end
+    local data = self.data
+    local index_size = _uint32(byte(data, 1), byte(data, 2), byte(data, 3), byte(data, 4))
 
-    local str = file:read(4)
-    local offset_length = _uint32(byte(str, 1), byte(str, 2), byte(str, 3), byte(str, 4))
-
-    local index_buff = file:read(offset_length - 4)
-
-    local tmp_offset = ip1 * 4
-    local start_length = _uint32(byte(index_buff, tmp_offset + 4), byte(index_buff, tmp_offset + 3), byte(index_buff, tmp_offset + 2), byte(index_buff, tmp_offset + 1))
-
-    local max_comp_len = offset_length - 1028
-    local start = start_length * 8 + 1024 + 1
-    local index_offset = -1
-    local index_length = -1
-    while start < max_comp_len do
-        local find_uint32 = _uint32(byte(index_buff, start), byte(index_buff, start + 1), byte(index_buff, start + 2), byte(index_buff, start + 3))
-        if ip_uint32 <= find_uint32 then
-            index_offset = _uint32(0, byte(index_buff, start + 6), byte(index_buff, start + 5), byte(index_buff, start + 4))
-            index_length = byte(index_buff, start + 7)
-            break
+    local mid = 0
+    local pos = 0
+    local low = 0
+    local high = (index_size - 262148 - 262144) / 9 - 1
+    
+    local pos1 = 0
+    local suffix = 0 --- end 
+    local prefix = 0 --- start
+    ngx.log(ngx[debug_log_level], "ip: " .. ip)
+    local ip1, ip2, ip3, ip4 = match(ip, "(%d+).(%d+).(%d+).(%d+)")
+    local val = _uint32(ip1, ip2, ip3, ip4)
+    
+    while low <= high do
+        mid = math.ceil((low + high) / 2)
+        pos = mid * 9 + 262148
+        if mid > 0 then
+            pos1 = math.ceil(mid - 1) * 9 + 262148
+            prefix = _uint32(
+                byte(data, pos1+1),
+                byte(data, pos1+2),
+                byte(data, pos1+3),
+                byte(data, pos1+4)
+            )
         end
-        start = start + 8
+    
+        suffix = _uint32(
+            byte(data, pos + 1),
+            byte(data, pos + 2),
+            byte(data, pos + 3),
+            byte(data, pos + 4)
+        )
+    
+        if val < prefix then
+            high = mid - 1
+        elseif val > suffix then
+            low = mid + 1        
+        else
+            off = _uint32(
+                0,
+                byte(data, pos + 7),
+                byte(data, pos + 6),
+                byte(data, pos + 5)
+            )
+            len = _uint32(
+                0,
+                0,
+                byte(data, pos + 8),
+                byte(data, pos + 9)
+            )
+            pos = off - 262144 + index_size
+            
+            loc = _split(string.sub(data, pos+1, pos+len), "\t")
+
+            return loc
+        end 
     end
-
-    if index_offset == -1 or index_length == -1 then
-        return nil, "io error, please check the data file."
-    end
-
-    local offset = offset_length + index_offset - 1024
-
-    file:seek("set", offset)
-
-    -- return file:read(index_length)
-    local data = file:read(index_length)
-    return to_table(_split(data, "%s+"))
 end
 
 -- 通过 ipip.net API 获取 IP 信息
@@ -149,48 +191,62 @@ function _M.query_api(self, ip)
         ["Token"] = token
     }
     local httpc = http.new()
+    local timeout = self.timeout or default_timeout
+    httpc.set_timeout(timeout)
+
     local res, err = httpc:request_uri(url, {
+            ssl_verify = ssl_verify or false,
             method = "GET",
             headers = headers
         })
 
     if not res then
-        ngx.log(ngx.ERR, "failed to http request: " .. err .. url)
+        info = "failed to http request: " .. url .. " headers: " .. cjson.encode(headers) .." status: " .. res.status .. " body: " .. res.body
+        ngx.log(ngx.ERR, info)
         return nil, err
     end
 
     if 200 ~= res.status then
-        ngx.log(ngx.ERR, res.status)
+        info = "failed to http request: " .. url .. " headers: " .. cjson.encode(headers) .." status: " .. res.status .. " body: " .. res.body
+        ngx.log(ngx.ERR, info)
         return nil, res.status
     end
 
     local response = cjson.decode(res.body)
 
-    if not response.data then
-        return response
+    ngx.log(ngx[debug_log_level], res.body)
+    if response.data then
+        return to_table(response.data)
+    else
+        -- if response.ret == "err" then
+        return nil, response.msg
     end
 
-    return to_table(response.data)
 end
 
 -- 通过 ipip.net 免费的 API 获取 IP 信息
 function _M.query_free_api(self, ip)
-    local api_url = "http://freeapi.ipip.net/"
-    local url = api_url .. ip
+    local url = "https://freeapi.ipip.net/" .. ip
 
     local httpc = http.new()
+    local timeout = self.timeout or default_timeout
+    httpc.set_timeout(timeout)
+
     local res, err = httpc:request_uri(url, {
+            ssl_verify = ssl_verify or false,
             method = "GET",
             headers = headers
         })
 
     if not res then
-        ngx.log(ngx.ERR, "failed to request: " .. err .. url)
+        info = "failed to http request: " .. url .. " headers: " .. cjson.encode(headers) .." status: " .. res.status .. " body: " .. res.body
+        ngx.log(ngx.ERR, info)
         return nil, err
     end
 
     if 200 ~= res.status then
-        ngx.log(ngx.ERR, res.status)
+        info = "failed to http request: " .. url .. " headers: " .. cjson.encode(headers) .." status: " .. res.status .. " body: " .. res.body
+        ngx.log(ngx.ERR, info)
         return nil, res.status
     end
 
@@ -212,20 +268,26 @@ function _M.api_status(self, _token)
     }
 
     local httpc = http.new()
+    local timeout = self.timeout or default_timeout
+    httpc.set_timeout(timeout)
+
     local res, err = httpc:request_uri(url, {
+            ssl_verify = ssl_verify or false,
             method = "GET",
             headers = headers
         })
 
-    if not res then
-        ngx.log(ngx.ERR, "failed to request: " .. err .. url)
-        return nil, err
-    end
-    ngx.log(ngx.INFO, "-------->", res.body, (res.body ~= ''))
-    if (res.body == '') then
-        return nil, 'bad token.'
+    if 200 ~= res.status then
+        info = "failed to http request: " .. url .. " headers: " .. cjson.encode(headers) .." status: " .. res.status .. " body: " .. res.body
+        ngx.log(ngx.ERR, info)
+        return nil, 'bad token'
     end
 
+    info = url .. " headers: " .. cjson.encode(headers) .." status: " .. res.status .. " body: " .. res.body
+    ngx.log(ngx[debug_log_level], info)
+    if (res.body == nil and res.body == '') then
+        return nil, 'bad token'
+    end
     return cjson.decode(res.body)
 end
 
