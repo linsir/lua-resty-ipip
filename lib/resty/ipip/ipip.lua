@@ -30,7 +30,7 @@ local mt = { __index = _M }
 
 _M._VERSION = '0.1.2'
 local debug_log_level = "DEBUG"
-local debug_log_level = "INFO"
+-- local debug_log_level = "INFO"
 
 local default_timeout = 600000
 -- local headers = {
