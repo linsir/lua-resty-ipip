@@ -21,7 +21,7 @@ IP query based on [http://www.ipip.net](http://www.ipip.net/), the best IP datab
     lua_code_cache on;
     resolver 223.5.5.5;
     init_by_lua '
-        local ipip = require "resty.ipip.ipip"
+        local ipip = require "resty.ipip.client"
         cjson = require "cjson"
         local opts = {
             path = "/path/to/17monipdb.datx",

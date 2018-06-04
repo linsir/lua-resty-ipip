@@ -2,7 +2,7 @@
 -- @Link    : http://linsir.org
 
 local cjson = require "cjson"
-local ipip = require "resty.ipip.ipip"
+local ipip = require "resty.ipip.client"
 
 local _M = {}
 _M._VERSION = '0.0.2'
@@ -47,7 +47,11 @@ function _M.go()
         token = '0c9cb5a116e69b156550b9590bb2920dc66b1a2a',
         timeout  = '2000',
     }
-    local ipipc = ipip:new(opts)
+    local ipipc, err = ipip:new(opts)
+    if not ipipc then
+        ngx.say(failure(err))
+        return
+    end
     -- local data, err = ipipc:query_file(ip_address)
     -- local data, err = ipipc:query_free_api(ip_address)
     local data, err = ipipc:query_api(ip_address)
