@@ -28,9 +28,9 @@ local _M = {}
 
 local mt = { __index = _M }
 
-_M._VERSION = '0.1.2'
-local debug_log_level = "DEBUG"
--- local debug_log_level = "INFO"
+_M._VERSION = '0.1.3'
+-- local debug_log_level = "DEBUG"
+local debug_log_level = "INFO"
 
 local default_timeout = 600000
 -- local headers = {
@@ -104,7 +104,7 @@ function _M.new(self, opts)
         local file = io.open(opts.path)
         if file == nil then
             ngx.log(ngx.ERR, "The data file path not initialized")
-            return nil, "io error."
+            return nil, "IO error: the data file ."
         end
         local data = file:read("*all")
         obj.data = data
@@ -175,7 +175,7 @@ function _M.query_file(self, ip)
             
             loc = _split(string.sub(data, pos+1, pos+len), "\t")
 
-            return loc
+            return to_table(loc)
         end 
     end
 end
